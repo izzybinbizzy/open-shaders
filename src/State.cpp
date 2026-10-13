@@ -6,6 +6,7 @@
 #include <pystring/pystring.h>
 
 #include "Deferred.h"
+#include "EngineFixes/LODBlendRingFix.h"
 #include "EngineFixes/LandscapeSeamsFix.h"
 #include "FeatureIssues.h"
 #include "Features/CSEditor.h"
@@ -404,6 +405,7 @@ void State::Reset()
 
 	Feature::ForEachLoadedFeature("Reset", [](Feature* feature) { feature->Reset(); });
 	LandscapeSeamsFix::GetInstance().Reset();
+	LODBlendRingFix::GetInstance().Update();
 
 	worldRenderedThisFrame = false;
 

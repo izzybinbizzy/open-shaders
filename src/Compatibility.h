@@ -33,7 +33,8 @@ namespace Compatibility
 		{ L"Data/SKSE/Plugins/NativeWaterLightStabilizer.dll",
 			"superseded by Sky Reflection and Light Limit Fix" },
 		{ L"Data/SKSE/Plugins/intellightent-ng.dll" },
-		{ L"Data/SKSE/Plugins/DynamicWetness.dll" }
+		{ L"Data/SKSE/Plugins/DynamicWetness.dll" },
+		{ L"Data/SKSE/Plugins/NMN_DeformableTerrain.dll" }
 	};
 
 	/** @brief A plugin that is only blocked below a minimum file version. */
