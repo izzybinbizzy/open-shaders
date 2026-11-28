@@ -1989,7 +1989,9 @@ namespace ShadowCasterManager
 		a_render(a_light, a_descriptor, a_count, a_flags);
 		if (d->renderTarget != RE::RENDER_TARGET_DEPTHSTENCIL::kSHADOWMAPS_ESRAM)
 			return;
-		const bool current = (s_gathered & bit) && d->shadowmapIndex == static_cast<std::uint32_t>(cascade) && d->camera;
+		// A pass the guard refused during this sun render leaves the map incomplete, so it is not kept for later frames.
+		const bool current = (s_gathered & bit) && d->shadowmapIndex == static_cast<std::uint32_t>(cascade) && d->camera &&
+		                     s_passGuardTripsThisRender.load(std::memory_order_relaxed) == 0;
 		s_gathered &= ~bit;
 		if (!current) {
 			Forget(bit);
