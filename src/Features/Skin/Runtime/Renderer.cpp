@@ -25,7 +25,7 @@ void Skin::SetupResources()
 	RestoreSampler();
 	detailSampler = nullptr;
 	PerGeometryCB = eastl::make_unique<ConstantBuffer>(ConstantBufferDesc<PerGeometryData>(), "Skin::PerGeometryCB");
-	perGeometryUploaded = false;
+	lastPerGeometryData.Reset();
 	D3D11_SAMPLER_DESC sampler{};
 	sampler.Filter = D3D11_FILTER_ANISOTROPIC;
 	sampler.AddressU = sampler.AddressV = sampler.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
@@ -347,10 +347,9 @@ void Skin::BSLightingShader_SetupGeometry(RE::BSRenderPass* a_pass)
 			}
 		}
 	}
-	if (!perGeometryUploaded || std::memcmp(&data, &uploadedPerGeometryData, sizeof(data)) != 0) {
+	if (lastPerGeometryData.Differs(data)) {
 		PerGeometryCB->Update(data);
-		uploadedPerGeometryData = data;
-		perGeometryUploaded = true;
+		lastPerGeometryData.Record(data);
 	}
 	ID3D11Buffer* buffer = PerGeometryCB->CB();
 	globals::d3d::context->PSSetConstantBuffers(7, 1, &buffer);

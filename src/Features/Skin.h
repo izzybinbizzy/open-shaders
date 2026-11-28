@@ -8,6 +8,7 @@
 #include "Skin/Persistence/Characters.h"
 #include "Skin/Runtime/Surfaces.h"
 #include "Skin/Runtime/Textures.h"
+#include "Utils/LastUpload.h"
 
 #include <mutex>
 
@@ -199,8 +200,7 @@ private:
 	winrt::com_ptr<ID3D11SamplerState> savedSampler;
 	bool samplerBound = false;
 	eastl::unique_ptr<ConstantBuffer> PerGeometryCB;
-	PerGeometryData uploadedPerGeometryData{};
-	bool perGeometryUploaded = false;
+	Util::LastUpload<PerGeometryData> lastPerGeometryData;
 	Editor editor;
 	uint64_t revision = 1;
 	uint64_t characterRevision = 0;
