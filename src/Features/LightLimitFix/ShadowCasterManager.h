@@ -339,6 +339,10 @@ namespace ShadowCasterManager
 
 		/// Leaves out of a light's shadow the small parts of its own fixture that enclose its flame, such as a lantern's candle.
 		bool SkipFlameEnclosure = true;
+
+		/// Frames the farthest sun cascade may keep its map while the view and sun hold still; 1 redraws every frame.
+		int32_t SunCascadeInterval = 4;
+		static constexpr int32_t kMaxSunCascadeInterval = 8;
 	};
 
 	/// Legacy score formula strings kept for settings migration.
@@ -387,7 +391,8 @@ namespace ShadowCasterManager
 		SpotLitRegion,
 		ProtectPlayerShadows,
 		FadeShadowSwaps,
-		SkipFlameEnclosure)
+		SkipFlameEnclosure,
+		SunCascadeInterval)
 
 	/// Restart-gated hook toggles applied at boot.
 	inline constexpr Util::Settings::RestartTable<Settings, 7> kRestartFields{ {
@@ -846,6 +851,7 @@ namespace ShadowCasterManager
 		uint32_t warpsSkippedSubPixel = 0;
 		uint32_t warpsSkippedOffscreen = 0;
 		uint32_t warpsSkippedNoDemand = 0;
+		uint64_t sunCascadesKeptTotal = 0;             ///< sun cascade maps kept from an earlier frame instead of redrawn
 		uint64_t convertReEnableToleranceSkipped = 0;  ///< subset of convertReEnableSkipped taken on flicker-scale drift
 		uint32_t convertedLights = 0;                  ///< lights currently converted to normal lights
 		uint32_t convertedStrictLights = 0;            ///< of those, lights using strict portal membership

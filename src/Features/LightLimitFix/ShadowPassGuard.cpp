@@ -31,6 +31,8 @@ namespace ShadowCasterManager
 
 	namespace
 	{
+		thread_local bool t_drainPasses = false;
+		bool s_drawPassGuarded = false;
 		constexpr uint32_t kPassChainWalkCap = 8192;
 		constexpr uint32_t kRegistrationWalkCap = 4096;
 		constexpr uint32_t kGuardLogLimit = 6;
@@ -334,6 +336,8 @@ namespace ShadowCasterManager
 			// No `this`: the pass is the first argument. CommonLib's member binding of this id passes `this` first.
 			static void thunk(RE::BSRenderPass* a_pass, std::uint32_t a_technique, bool a_alphaTest, std::uint32_t a_renderFlags)
 			{
+				if (t_drainPasses)
+					return;
 				static const auto [imageBase, imageEnd] = GameImageRange();
 				if (InShadowRenderWindow() && a_pass && !PassShaderVtableInModule(a_pass, imageBase, imageEnd)) {
 					s_passGuardFaultSkipsTotal.fetch_add(1, std::memory_order_relaxed);
@@ -350,6 +354,8 @@ namespace ShadowCasterManager
 	{
 		if (const long rc = stl::detour_thunk<Hook_SetupAndDrawPass>(REL::RelocationID(100854, 107644)); rc != 0)
 			logger::error("[SCM] SetupAndDrawPass entry guard not installed (Detours error {})", rc);
+		else
+			s_drawPassGuarded = true;
 		stl::write_vfunc<0x01, Hook_RegisterPassSorted>(RE::VTABLE_BSBatchRenderer[0]);
 		stl::write_vfunc<0x02, Hook_RegisterPass>(RE::VTABLE_BSBatchRenderer[0]);
 	}
@@ -370,6 +376,16 @@ namespace ShadowCasterManager
 	{
 		return s_shadowRenderThreadId.load(std::memory_order_relaxed) == GetCurrentThreadId();
 	}
+
+	PassDrainScope::PassDrainScope() noexcept :
+		previous(t_drainPasses)
+	{
+		t_drainPasses = true;
+	}
+
+	PassDrainScope::~PassDrainScope() { t_drainPasses = previous; }
+
+	bool PassDrainScope::Available() noexcept { return s_drawPassGuarded; }
 
 	void ForcePassGuardTrips(uint32_t a_count)
 	{

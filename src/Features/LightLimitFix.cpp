@@ -76,6 +76,8 @@ namespace
 		a_settings.JsonPlacedLightIntensity =
 			Util::ClampFiniteOrDefault(a_settings.JsonPlacedLightIntensity, kJsonPlacedLightIntensityMin, kJsonPlacedLightIntensityMax, 1.0f);
 		a_settings.LightAttachRefreshFrames = std::clamp(a_settings.LightAttachRefreshFrames, kLightAttachRefreshFramesMin, kLightAttachRefreshFramesMax);
+		a_settings.ShadowSettings.SunCascadeInterval =
+			std::clamp(a_settings.ShadowSettings.SunCascadeInterval, 1, ShadowCasterManager::Settings::kMaxSunCascadeInterval);
 	}
 
 	void ClearStrictLightData(LightLimitFix::StrictLightDataCB& a_data, bool a_resetGeometryData) noexcept

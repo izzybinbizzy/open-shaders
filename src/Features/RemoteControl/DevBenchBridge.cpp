@@ -893,6 +893,7 @@ namespace
 							{ "warpsSkippedSubPixel", snap.warpsSkippedSubPixel },
 							{ "warpsSkippedOffscreen", snap.warpsSkippedOffscreen },
 							{ "warpsSkippedNoDemand", snap.warpsSkippedNoDemand },
+							{ "sunCascadesKeptTotal", snap.sunCascadesKeptTotal },
 							{ "convertedLights", snap.convertedLights },
 							{ "convertedStrictLights", snap.convertedStrictLights },
 							{ "cellResetsTotal", snap.cellResetsTotal },

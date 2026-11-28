@@ -2433,6 +2433,8 @@
     "feature.light_limit_fix.status_slot_tooltip": "Casting shadows this frame in slot %u.",
     "feature.light_limit_fix.status_suppr": "Suppr",
     "feature.light_limit_fix.status_suppr_tooltip": "Suppressed by debug override.\nClick the Mode button to clear.",
+    "feature.light_limit_fix.sun_cascade_interval": "Distant Sun Shadow Redraw Interval",
+    "feature.light_limit_fix.sun_cascade_interval_tooltip": "Frames the farthest sun shadow cascade keeps its last map instead of\nredrawing it every frame. A kept map redraws at once when the camera\nmoves or turns past a small step, or the cell or the sun changes; a\ndistant moving object's shadow can trail it by up to this many frames.\nThe nearer cascades always redraw. 1 redraws every cascade every frame.",
     "feature.light_limit_fix.sun_lit_hair": "Sun-Lit Hair",
     "feature.light_limit_fix.sun_lit_hair_tooltip": "Hair takes the directional shadow the deferred pass computed instead of the engine's forward lookup, so it is lit by the sun like the rest of the scene. Off keeps the engine's original hair shadowing, which can leave hair much darker.",
     "feature.light_limit_fix.suppressed_count": "  %zu suppressed",

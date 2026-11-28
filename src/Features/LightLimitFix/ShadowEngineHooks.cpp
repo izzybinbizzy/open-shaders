@@ -218,6 +218,15 @@ namespace ShadowCasterManager
 			ctx.Rsi = static_cast<DWORD64>(idx);
 	}
 
+	struct Hook_RenderCascade
+	{
+		static void thunk(RE::BSShadowLight* a_light, void* a_descriptor, void* a_count, std::uint32_t a_flags)
+		{
+			RenderSunCascade(a_light, a_descriptor, a_count, a_flags, reinterpret_cast<RenderCascadeFn>(func.address()));
+		}
+		static inline REL::Relocation<decltype(thunk)> func;
+	};
+
 	// The engine recomputes the shadow viewport per cascade recompute, so the
 	// tile scale is re-derived fresh each time from the bound slice, not cached.
 	struct Hook_UpdateViewPort
@@ -1299,6 +1308,11 @@ namespace ShadowCasterManager
 			uintptr_t off = REL::Relocate(0xA9E - 0x9E0, 0xDB0 - 0xCF0, 0xe0);
 			if (!SKSE::stl::install_context_hook(base + off, 0x25, Hook_OverwriteShadowMapIndex))
 				logger::error("[SCM] Failed to install Hook_OverwriteShadowMapIndex");
+		}
+
+		if (!globals::game::isVR) {
+			if (long rc = stl::detour_thunk<Hook_RenderCascade>(REL::RelocationID(100820, 107604)))
+				logger::error("[SCM] Failed to install Hook_RenderCascade ({})", rc);
 		}
 
 		// Variable-resolution tiles: shrink the shadow viewport right after the

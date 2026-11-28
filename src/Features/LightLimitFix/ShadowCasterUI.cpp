@@ -1652,6 +1652,18 @@ namespace ShadowCasterManager
 											"Gives a light the GPU measures as lit on screen far less than the\n"
 											"best-lit light a small shadow tile, so blocked lights stop taking large tiles."));
 
+			if (!globals::game::isVR) {
+				ImGui::SliderInt(T(TKEY("sun_cascade_interval"), "Distant Sun Shadow Redraw Interval"), &settings.SunCascadeInterval,
+					1, Settings::kMaxSunCascadeInterval, "%d", ImGuiSliderFlags_AlwaysClamp);
+				if (ImGui::IsItemHovered())
+					ImGui::SetTooltip("%s", T(TKEY("sun_cascade_interval_tooltip"),
+												"Frames the farthest sun shadow cascade keeps its last map instead of\n"
+												"redrawing it every frame. A kept map redraws at once when the camera\n"
+												"moves or turns past a small step, or the cell or the sun changes; a\n"
+												"distant moving object's shadow can trail it by up to this many frames.\n"
+												"The nearer cascades always redraw. 1 redraws every cascade every frame."));
+			}
+
 			ImGui::TreePop();
 		}
 

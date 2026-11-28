@@ -105,6 +105,7 @@ add_executable(
     test_lightattachgate.cpp
     test_pointersearch.cpp
     test_splitlatchbackoff.cpp
+    test_sun_cascade_cadence.cpp
     test_shaderinclude.cpp
     test_settingspatch.cpp
     test_weatheridparser.cpp

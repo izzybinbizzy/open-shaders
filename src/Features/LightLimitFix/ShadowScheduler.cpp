@@ -25,6 +25,7 @@
 #include "ShadowCasterInternal.h"
 #include "ShadowMeshExclusions.h"
 #include "SplitLatchBackoff.h"
+#include "SunCascadeCadence.h"
 #include "Utils/Game.h"
 
 #include <Windows.h>  // SEH (__try) for the shadow-light usability backstop
@@ -1826,6 +1827,181 @@ namespace ShadowCasterManager
 		}
 	}
 
+	namespace SunCadence
+	{
+		/// What a cascade's drawn map was drawn with: its camera and the descriptor fields the engine recomputes at each draw.
+		struct Drawn
+		{
+			RE::NiTransform local;
+			RE::NiTransform world;
+			RE::NiCamera::RUNTIME_DATA camera;
+			RE::NiCamera::RUNTIME_DATA2 view;
+			REX::W32::XMFLOAT4X4 lightTransform;
+			RE::NiFrustumPlanes clipPlanes;
+			std::uint32_t unitsPerTexel;
+			RE::NiRect<std::int32_t> port;
+		};
+
+		SunCascadeCadence::Planner s_planner;
+		SunCascadeCadence::View s_view;
+		std::array<Drawn, SunCascadeCadence::kMaxCascades> s_drawn;
+		std::uint32_t s_drawnValid = 0;
+		std::uint32_t s_keep = 0;
+		std::uint32_t s_gathered = 0;
+		const RE::BSShadowLight* s_light = nullptr;
+		std::uint32_t s_thread = 0;
+		std::uint32_t s_planFrame = 0;
+		std::atomic<std::uint64_t> s_sunCascadesKeptTotal{ 0 };
+
+		void Forget(std::uint32_t a_mask)
+		{
+			s_planner.Forget(a_mask);
+			s_drawnValid &= ~a_mask;
+			s_keep &= ~a_mask;
+		}
+
+		void Reset()
+		{
+			s_planner.Reset();
+			s_drawnValid = s_keep = s_gathered = 0;
+			s_light = nullptr;
+		}
+
+		SunCascadeCadence::Vec3 Vec(const RE::NiPoint3& a_point) { return { a_point.x, a_point.y, a_point.z }; }
+
+		SunCascadeCadence::Box BoxOf(const RE::NiCamera* a_camera)
+		{
+			SunCascadeCadence::Box box;
+			box.origin = Vec(a_camera->world.translate);
+			std::memcpy(box.rotation.data(), &a_camera->world.rotate.entry[0][0], sizeof(box.rotation));
+			const auto& frustum = a_camera->GetRuntimeData2().viewFrustum;
+			box.frustum = { frustum.fLeft, frustum.fRight, frustum.fTop, frustum.fBottom, frustum.fNear, frustum.fFar };
+			return box;
+		}
+
+		void BuildView(RE::BSShadowDirectionalLight* a_sun, std::uint32_t a_count)
+		{
+			auto& view = s_view;
+			view = {};
+			view.light = reinterpret_cast<std::uintptr_t>(a_sun);
+			if (const auto* eye = RE::Main::WorldRootCamera()) {
+				view.eye = Vec(eye->world.translate);
+				std::memcpy(view.rotation.data(), &eye->world.rotate.entry[0][0], sizeof(view.rotation));
+				const auto& frustum = eye->GetRuntimeData2().viewFrustum;
+				view.frustum = { frustum.fLeft, frustum.fRight, frustum.fTop, frustum.fBottom, frustum.fNear, frustum.fFar };
+			} else {
+				view.eye.x = std::numeric_limits<float>::quiet_NaN();
+			}
+			if (const auto* player = globals::game::player) {
+				const auto* cell = player->GetParentCell();
+				view.cell = cell && cell->IsInteriorCell() ? reinterpret_cast<std::uintptr_t>(cell) : reinterpret_cast<std::uintptr_t>(player->GetWorldspace());
+			}
+			const auto& splits = a_sun->GetShadowDirectionalLightRuntimeData();
+			if (a_count == 0 || a_count > std::size(splits.endSplitDistances))
+				return;
+			view.count = a_count;
+			const auto& descriptors = a_sun->GetRuntimeData().shadowmapDescriptors;
+			for (std::uint32_t i = 0; i < a_count; ++i) {
+				const auto& d = descriptors[i];
+				const auto* camera = d.camera.get();
+				view.cameras[i] = reinterpret_cast<std::uintptr_t>(camera);
+				view.slots[i] = std::uint64_t(static_cast<std::uint32_t>(d.renderTarget)) << 32 | d.shadowmapIndex;
+				if (camera) {
+					const auto& r = camera->world.rotate.entry;
+					view.lightAxis[i] = { r[0][0], r[1][0], r[2][0] };
+				}
+				view.splitStarts[i] = splits.startSplitDistances[i];
+				view.splitEnds[i] = splits.endSplitDistances[i];
+			}
+			view.shadowDistance = view.splitEnds[a_count - 1];
+		}
+
+		/// Before the sun gathers: picks the cascades that keep last frame's map and puts back the camera each was drawn with.
+		void Plan(RE::BSShadowDirectionalLight* a_sun)
+		{
+			s_keep = s_gathered = 0;
+			const auto frame = globals::state ? globals::state->frameCountAtomic.load(std::memory_order_relaxed) : 0u;
+			if (a_sun != s_light || frame != s_planFrame + 1)
+				Forget(~0u);
+			s_planFrame = frame;
+			s_light = a_sun;
+			s_thread = GetCurrentThreadId();
+			auto& descriptors = a_sun->GetRuntimeData().shadowmapDescriptors;
+			const auto count = descriptors.size();
+			BuildView(a_sun, count);
+			SunCascadeCadence::Rules rules;
+			rules.farInterval = static_cast<std::uint32_t>(s_settings.SunCascadeInterval);
+			const auto keep = PassDrainScope::Available() ? s_planner.Plan(rules, s_view) & s_drawnValid : 0u;
+			for (std::uint32_t i = 0; i < s_view.count; ++i) {
+				if (!(keep >> i & 1))
+					continue;
+				auto& d = descriptors[i];
+				auto* camera = d.camera.get();
+				const auto& drawn = s_drawn[i];
+				camera->local = drawn.local;
+				camera->world = drawn.world;
+				camera->GetRuntimeData() = drawn.camera;
+				camera->GetRuntimeData2() = drawn.view;
+			}
+			s_keep = keep;
+			s_gathered = ((1u << s_view.count) - 1) & ~keep;
+		}
+
+		bool IsSunMap(RE::RENDER_TARGET_DEPTHSTENCIL a_target)
+		{
+			return a_target == RE::RENDER_TARGET_DEPTHSTENCIL::kSHADOWMAPS_ESRAM || a_target == RE::RENDER_TARGET_DEPTHSTENCIL::kVOLUMETRIC_LIGHTING_SHADOWMAPS_ESRAM;
+		}
+	}
+
+	void RenderSunCascade(RE::BSShadowLight* a_light, void* a_descriptor, void* a_count, std::uint32_t a_flags, RenderCascadeFn a_render)
+	{
+		using namespace SunCadence;
+		auto* d = static_cast<RE::BSShadowLight::ShadowmapDescriptor*>(a_descriptor);
+		int cascade = -1;
+		if (a_light && a_light == s_light) {
+			const auto& descriptors = a_light->GetRuntimeData().shadowmapDescriptors;
+			if (d >= descriptors.data() && d < descriptors.data() + descriptors.size())
+				cascade = static_cast<int>(d - descriptors.data());
+		}
+		if (cascade < 0 || static_cast<std::uint32_t>(cascade) >= s_view.count || GetCurrentThreadId() != s_thread) {
+			if (d && IsSunMap(d->renderTarget))
+				Forget(~0u);
+			return a_render(a_light, a_descriptor, a_count, a_flags);
+		}
+		const auto bit = 1u << cascade;
+		if (s_keep & bit) {
+			const bool clear = d->clearRenderTarget;
+			d->clearRenderTarget = false;
+			{
+				const PassDrainScope drain;
+				a_render(a_light, a_descriptor, a_count, a_flags);
+			}
+			d->clearRenderTarget = clear;
+			const auto& drawn = s_drawn[cascade];
+			d->lightTransform = drawn.lightTransform;
+			d->clipPlanes = drawn.clipPlanes;
+			d->unitsPerTexel = drawn.unitsPerTexel;
+			d->port = drawn.port;
+			if (d->renderTarget == RE::RENDER_TARGET_DEPTHSTENCIL::kSHADOWMAPS_ESRAM)
+				s_sunCascadesKeptTotal.fetch_add(1, std::memory_order_relaxed);
+			return;
+		}
+		a_render(a_light, a_descriptor, a_count, a_flags);
+		if (d->renderTarget != RE::RENDER_TARGET_DEPTHSTENCIL::kSHADOWMAPS_ESRAM)
+			return;
+		const bool current = (s_gathered & bit) && d->shadowmapIndex == static_cast<std::uint32_t>(cascade) && d->camera;
+		s_gathered &= ~bit;
+		if (!current) {
+			Forget(bit);
+			return;
+		}
+		const auto* camera = d->camera.get();
+		s_drawn[cascade] = { camera->local, camera->world, camera->GetRuntimeData(), camera->GetRuntimeData2(),
+			d->lightTransform, d->clipPlanes, d->unitsPerTexel, d->port };
+		s_drawnValid |= bit;
+		s_planner.Rendered(static_cast<std::uint32_t>(cascade), s_view, BoxOf(camera));
+	}
+
 	static RE::BSShadowLight* SetupSunLight(RE::ShadowSceneNode* ssn)
 	{
 		ZoneScopedN("SCM::Scheduler::SetupSun");
@@ -1836,6 +2012,8 @@ namespace ShadowCasterManager
 			if (sun) {
 				uint8_t vrFlag = globals::game::isVR ? static_cast<uint8_t>(RE::BSShaderManager::IsSunShadowUpdateDue()) + 1 : 0;
 				SetSunCullCameras(sun);
+				if (!globals::game::isVR)
+					SunCadence::Plan(sun);
 				sun->Accumulate(*GetAccumLightSlot(), 0, nullptr, vrFlag);
 
 				if (sun->lensFlareData && !globals::game::isVR)
@@ -3869,6 +4047,7 @@ namespace ShadowCasterManager
 				snap.warpsSkippedSubPixel = s_warpsSkippedSubPixel.load(std::memory_order_relaxed);
 				snap.warpsSkippedOffscreen = s_warpsSkippedOffscreen.load(std::memory_order_relaxed);
 				snap.warpsSkippedNoDemand = s_warpsSkippedNoDemand.load(std::memory_order_relaxed);
+				snap.sunCascadesKeptTotal = SunCadence::s_sunCascadesKeptTotal.load(std::memory_order_relaxed);
 				snap.avgLightCostUs = s_budget.GetAverageCostUs();
 				snap.avgRedrawsPerFrame = static_cast<float>(s_redrawSum) / static_cast<float>(kRedrawHistorySize);
 				snap.staticBakesTotal = s_staticBakeTotal.load(std::memory_order_relaxed);
@@ -3986,6 +4165,8 @@ namespace ShadowCasterManager
 			// a single capture spanning a settings change captures both sides.
 			TracyPlot("cfg.ShadowLightCount", (int64_t)s_settings.ShadowLightCount);
 			TracyPlot("cfg.MaxRedrawPerFrame", (int64_t)s_settings.MaxRedrawPerFrame);
+			TracyPlot("cfg.SunCascadeInterval", (int64_t)s_settings.SunCascadeInterval);
+			TracyPlot("scm.sun.kept", (int64_t)std::popcount(SunCadence::s_keep));
 			TracyPlot("cfg.ConvertExcessToNormal", (int64_t)(s_settings.ConvertExcessToNormal ? 1 : 0));
 			TracyPlot("cfg.Enabled", (int64_t)(s_settings.Enabled ? 1 : 0));
 			TracyPlot("cfg.RedrawBudgetMs", (double)s_settings.RedrawBudgetMs);
@@ -4080,6 +4261,7 @@ namespace ShadowCasterManager
 			s_fadedOutLights.clear();
 			s_lastValidFrame.clear();
 			ResetSession();
+			SunCadence::Reset();
 			return;
 		}
 
@@ -4095,6 +4277,7 @@ namespace ShadowCasterManager
 			std::erase_if(s_lastValidFrame, [ssn](const auto& kv) { return !KeepsSlotThroughCellShift(ssn, kv.first); });
 			s_splitState.clear();  // bakeQueued defaults true: every light re-bakes
 			ShadowCasterManager::InvalidateAllStaticBakes();
+			SunCadence::Forget(~0u);
 		}
 
 		// Hold a strong ref to every active shadow light: a concurrent bulk cell-teardown

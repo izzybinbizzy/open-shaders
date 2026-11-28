@@ -475,6 +475,28 @@ namespace ShadowCasterManager
 	/// Hooks BSBatchRenderer::RegisterPass/RegisterPassSorted; inert until the trace is enabled.
 	void InstallPassRegistrationHooks();
 
+	/// While one lives on a thread, the SetupAndDrawPass guard draws none of that thread's passes; the batch
+	/// renderer still walks and empties its pass groups.
+	struct PassDrainScope
+	{
+		PassDrainScope() noexcept;
+		~PassDrainScope();
+		PassDrainScope(const PassDrainScope&) = delete;
+		PassDrainScope& operator=(const PassDrainScope&) = delete;
+
+		/// False when the SetupAndDrawPass guard is not installed, so a scope would draw every pass.
+		[[nodiscard]] static bool Available() noexcept;
+
+	private:
+		bool previous;
+	};
+
+	using RenderCascadeFn = void (*)(RE::BSShadowLight*, void*, void*, std::uint32_t);
+
+	/// The engine's per-cascade shadow map render; a sun cascade that keeps last frame's map runs it drained and keeps
+	/// the matrix that map was drawn with.
+	void RenderSunCascade(RE::BSShadowLight* a_light, void* a_descriptor, void* a_count, std::uint32_t a_flags, RenderCascadeFn a_render);
+
 	/// Unlinks the pass groups a light's accumulators kept from an accumulate that was never rendered, so the
 	/// next accumulate does not register recycled passes into them. False if any renderer faulted while clearing.
 	bool ClearStaleAccumulatedPasses(RE::BSShadowLight* a_light);
