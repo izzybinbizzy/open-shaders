@@ -377,7 +377,7 @@ namespace
 				State::SettingsLayerGuard settingsLayerGuard;
 				json blob;
 				feature->SaveSettings(blob);
-				return blob;
+				return json{ { "shortName", shortName }, { "settings", std::move(blob) } };
 			});
 		}
 
@@ -400,7 +400,7 @@ namespace
 				auto* feature = Feature::FindFeatureByShortName(shortName);
 				if (!feature)
 					return json{ { "error", "feature not found or not loaded" }, { "shortName", shortName } };
-				return feature->GetRuntimeFlags();
+				return json{ { "shortName", shortName }, { "flags", feature->GetRuntimeFlags() } };
 			});
 		}
 
@@ -420,7 +420,7 @@ namespace
 						{ "error", "unrecognized runtime flag" },
 						{ "shortName", shortName },
 						{ "name", flagName },
-						{ "hint", "must match a key from feature(action='runtimeGet')" }
+						{ "hint", "must match a key of feature(action='runtimeGet')'s flags" }
 					};
 				logger::info("DevBenchBridge: feature(runtimeSet, {}, {}) applied", shortName, flagName);
 				return json{ { "action", "runtimeSet" }, { "shortName", shortName }, { "name", flagName }, { "applied", true } };
@@ -446,7 +446,7 @@ namespace
 							{ "error", "unrecognized setting key(s); nothing applied" },
 							{ "shortName", shortName },
 							{ "unknownKeys", unknown },
-							{ "hint", "keys must match the shape from feature(action='get'); nested groups such as ShadowSettings must be nested, not flattened" }
+							{ "hint", "keys must match the shape of feature(action='get')'s settings; nested groups such as ShadowSettings must be nested, not flattened" }
 						};
 					logger::info("DevBenchBridge: feature(set, {}) applied", shortName);
 					return json{ { "action", "set" }, { "shortName", shortName }, { "applied", true } };

@@ -712,7 +712,7 @@ void Upscaling::OnRuntimeDisabled()
 void Upscaling::RegisterUxActions()
 {
 	FEATURE_COMMAND("applyFoveationPreset",
-		"Apply a named foveation crop preset (see openshaders.feature get shortName=Upscaling -> foveatedRender.CropPresets[].name, e.g. \"Center 75%\") -- the same code path as clicking the preset dropdown, including right-eye auto-mirror. Params: name (string).",
+		"Apply a named foveation crop preset (see openshaders.feature get shortName=Upscaling -> settings.foveatedRender.CropPresets[].name, e.g. \"Center 75%\") -- the same code path as clicking the preset dropdown, including right-eye auto-mirror. Params: name (string).",
 		[](Feature*, const json& args) {
 			const std::string name = args.value("name", std::string{});
 			if (!foveatedRender.subrectController.ApplyPresetByName(name))
